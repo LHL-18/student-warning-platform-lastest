@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN" style="height:100%;">
+<head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://dashscope.aliyuncs.com https://your-kingdee-server.com; object-src 'none'; base-uri 'self';"><title>学业预警帮扶平台 - 学生端</title><link rel="stylesheet" href="style.css">
+  <!-- 会话层必须最先加载：未登录/身份不符时立刻跳回登录页 -->
+  <script src="session.js"></script>
+  <script src="permissions.js"></script>
+  <script>window.Session && window.Session.guard('student');</script>
+</head>
+<body style="height:100vh;overflow:hidden;">
+  <header class="topbar">
+    <div class="topbar-brand"><span class="topbar-title">学业预警帮扶平台</span></div>
+    <nav class="topbar-nav">
+      <a class="nav-item active" data-nav="profile">学业画像</a>
+      <a class="nav-item" data-nav="plan">学习计划</a>
+      <a class="nav-item" data-nav="wrongbook">错题本</a>
+      <a class="nav-item" data-nav="notice">消息通知</a>
+      <a class="nav-item" data-nav="appeal">困难申报</a>
+      <a class="nav-item" data-nav="privacy">隐私中心</a>
+    </nav>
+    <div class="topbar-right"><span class="identity-box" id="identityBox"></span><a href="javascript:void(0)" id="replayTourBtn" style="color:#fff;font-size:11px;text-decoration:none;opacity:0.75;margin-left:8px;">使用引导</a></div>
+  </header>
+  <main class="main-content">
+    <div id="multiModalBar" class="multi-modal-bar">
+      <div class="multi-modal-toggle" id="multiModalToggle">AI 多模态能力 &#9660;</div>
+      <div class="multi-modal-content" id="multiModalContent">
+        <div class="multi-modal-cards">
+          <div class="mm-card">
+            <span class="mm-icon">&#128247;</span>
+            <span class="mm-label">OCR 拍照识别</span>
+            <button type="button" class="btn btn-sm btn-outline" id="btnOcrDemo">拍照 / 上传识别</button>
+            <div id="ocrProgress" class="mm-track" style="display:none;"><div id="ocrProgressFill" class="mm-fill" style="background:#1a73e8;"></div></div>
+            <div id="ocrResult" class="mm-result"></div>
+          </div>
+          <div class="mm-card">
+            <span class="mm-icon">&#127908;</span>
+            <span class="mm-label">ASR 语音转文字</span>
+            <button type="button" class="btn btn-sm btn-outline" id="btnAsrDemo">实时听写</button>
+            <div id="asrProgress" class="mm-track" style="display:none;"><div id="asrProgressFill" class="mm-fill" style="background:#0d904f;"></div></div>
+            <div id="asrResult" class="mm-result"></div>
+          </div>
+          <div class="mm-card">
+            <span class="mm-icon">&#128214;</span>
+            <span class="mm-label">错题拍照答疑</span>
+            <button type="button" class="btn btn-sm btn-outline" id="btnQaDemo">上传错题照片</button>
+            <div id="qaProgress" class="mm-track" style="display:none;"><div id="qaProgressFill" class="mm-fill" style="background:#9334e6;"></div></div>
+            <div id="qaResult" class="mm-result"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="sidebar" style="width:220px;min-width:220px;"><div id="studentSidebar"></div></aside>
+    <section class="content-area">
+      <div id="tabProfile" class="tab-panel active" style="padding:16px 20px;display:block;"></div>
+      <div id="tabPlan" class="tab-panel" style="display:none;"></div>
+      <div id="tabWrongBook" class="tab-panel" style="display:none;padding:16px 20px;"></div>
+      <div id="tabNotice" class="tab-panel" style="display:none;"></div>
+      <div id="tabAppeal" class="tab-panel" style="display:none;"></div>
+      <div id="tabPrivacy" class="tab-panel" style="display:none;padding:16px 20px;"></div>
+    </section>
+  </main>
+  <div id="toast" class="toast" style="display:none;"></div>
+  <script src="riskPlugins/pluginManager.js"></script>
+  <script src="riskPlugins/textMetrics.js"></script>
+  <script src="riskPlugins/rules/basic.js"></script>
+  <script src="riskPlugins/rules/weighted.js"></script>
+  <script src="riskPlugins/rules/strict.js"></script>
+  <script src="echarts.min.js"></script>
+  <script src="knowledge.js"></script>
+  <script src="config.local.js"></script>
+  <script src="config.js"></script>
+  <script src="students.js"></script>
+  <script src="onboarding.js"></script>
+  <script src="multimodal.js"></script>
+  <script src="tickets.js"></script>
+  <script src="appeals.js"></script>
+  <script src="evidence.js"></script>
+  <script src="riskPlugins/positiveRule.js"></script>
+  <script src="signals.js"></script>
+  <script src="profileFusion.js"></script>
+  <script src="campusProfile.js"></script>
+  <script src="student.js"></script>
+</body></html>

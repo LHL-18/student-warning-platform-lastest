@@ -1,0 +1,33 @@
+{
+  "name": "student-warning-app",
+  "version": "1.3.0",
+  "description": "学业预警帮扶平台 — 金蝶AI苍穹学情分析任务流 + 多模态能力（OCR/ASR/拍照答疑）+ 任务流引擎 + 错题回流预警",
+  "main": "main.js",
+  "author": "Academic Support Team",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "test": "node test-risk.js",
+    "test:agents": "node test-agents.js",
+    "test:fusion": "node test-fusion.js",
+    "test:perm": "node test-perm.js",
+    "test:flow": "node test-flow.js",
+    "test:ui": "electron tools/harness/main.js",
+    "test:ui:teacher": "electron tools/harness/main.js teacher",
+    "test:ui:dirty": "electron tools/harness/main.js dirty",
+    "test:ui:sandbox": "electron tools/harness/main.js sandbox",
+    "test:all": "npm test && npm run test:agents && npm run test:perm && npm run test:flow && npm run test:fusion && npm run test:ui"
+  },
+  "dependencies": {
+    "electron-log": "^5.1.0",
+    "electron-store": "^8.2.0",
+    "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "asar": "^3.2.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0"
+  }
+}

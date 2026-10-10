@@ -1,0 +1,23 @@
+appId: com.academic.student-warning
+productName: 学业预警帮扶平台
+directories:
+  output: dist
+  buildResources: assets
+files:
+  - "**/*"
+  - "!config.local.js"
+  - "!test-*.js"
+  - "!tools/**/*"
+  - "!docs/**/*"
+  - "!students_50.csv"
+electronDist: node_modules/electron/dist
+win:
+  signAndEditExecutable: false
+  target:
+    - target: dir
+      arch: [x64]
+    - target: nsis
+      arch: [x64]
+  sign: null
+asar: true
+npmRebuild: false

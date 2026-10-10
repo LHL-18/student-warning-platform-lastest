@@ -1,0 +1,11 @@
+# 统一换行符：避免 Windows 上检出时出现 "LF will be replaced by CRLF" 的大量假改动
+* text=auto eol=lf
+
+# 二进制资源不做换行转换
+*.png binary
+*.ico binary
+
+# 第三方压缩库：标记为 vendored，折叠在 diff 里
+echarts.min.js linguist-vendored
+xlsx.full.min.js linguist-vendored
+package-lock.json linguist-generated

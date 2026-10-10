@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-CN" style="height:100%;">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://dashscope.aliyuncs.com https://your-kingdee-server.com; object-src 'none'; base-uri 'self';">
+  <!-- CSP removed for local dev -->
+  <title>学业预警帮扶平台</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- 会话层必须最先加载：未登录/身份不符时立刻跳回登录页，避免先闪出教师界面 -->
+  <script src="session.js"></script>
+  <script src="permissions.js"></script>
+  <script>window.Session && window.Session.guard('teacher');</script>
+</head>
+<body style="height:100vh;overflow:hidden;">
+<script>
+  console.log("=== DIAG: JS engine loaded ===");
+  window.addEventListener('DOMContentLoaded', function() {
+    console.log("=== DIAG: DOM ready ===");
+    console.log("studentForm:", document.getElementById('studentForm'));
+    console.log("addStudentBtn:", document.getElementById('addStudentBtn'));
+    console.log("exportBtn:", document.getElementById('exportBtn'));
+    console.log("studentModal:", document.getElementById('studentModal'));
+  });
+</script>
+
+  <!-- ========== 顶部导航栏 ========== -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="topbar-icon">&#9888;</span>
+      <span class="topbar-title">学业预警帮扶平台</span>
+    </div>
+    <nav class="topbar-nav">
+      <a class="nav-item active" data-nav="warning">学情预警</a>
+      <a class="nav-item" data-nav="knowledge">课程知识库</a>
+      <a class="nav-item" data-nav="classroom">班级管理</a>
+      <a class="nav-item" data-nav="flow">任务流</a>
+      <a class="nav-item" data-nav="settings" id="settingsNav">系统设置 <span id="currentRuleLabel" style="font-size:10px;opacity:0.7;"></span></a>
+    </nav>
+    <div class="topbar-right">
+      <!-- apiModeBadge hidden -->
+      <!-- 演示入口放在顶栏：以前是右下角常驻脉冲悬浮按钮，会盖住滚动内容且视觉噪音大 -->
+      <button id="btnStartDemo" type="button" class="topbar-demo-btn">▶ 启动演示</button>
+      <button id="btnSeedDemo" type="button" class="topbar-demo-btn" title="把本地数据写满，方便评审直接看到完整状态">载入完整演示数据</button>
+      <div class="identity-box" id="identityBox"></div>
+      <a href="javascript:void(0)" id="replayTourBtn" style="color:#fff;font-size:11px;text-decoration:none;opacity:0.75;margin-right:8px;">使用引导</a><span class="topbar-version">v1.2.0</span>
+    </div>
+  </header>
+
+  <!-- 设置面板 -->
+  <div id="settingsPanel" class="settings-panel" style="display:none;">
+    <div class="settings-row">
+      <span>预警评分规则：</span>
+      <select id="ruleSelector" class="filter-select"></select>
+      <button id="applyRuleBtn" class="btn btn-sm btn-primary">应用并重算</button>
+      <button id="btnAgentConfig" class="btn btn-sm btn-outline" style="margin-left:6px;">Agent 配置</button>
+    </div>
+    <div class="settings-row" id="accessSummaryRow">
+      <span>数据访问自查：</span>
+      <span id="accessSummary" style="font-size:12px;color:var(--color-text-secondary);">—</span>
+      <span style="font-size:11px;color:var(--color-text-muted);">（仅统计教师端对数据的查看/导出/修改，用于自查）</span>
+    </div>
+    <!-- 政策沙盒（影子模式）：只算不写 -->
+    <div class="settings-row" id="sandboxRow" style="flex-wrap:wrap;gap:6px;align-items:center;">
+      <span>政策沙盒（影子模式）：</span>
+      <select id="sandboxRule" class="filter-select"></select>
+      <span style="font-size:11px;color:var(--color-text-muted);">不及格线</span>
+      <input type="number" id="sbFailLine" class="sandbox-input" style="width:58px;">
+      <span style="font-size:11px;color:var(--color-text-muted);">出勤率下限</span>
+      <input type="number" id="sbAttLine" class="sandbox-input" style="width:58px;">
+      <span style="font-size:11px;color:var(--color-text-muted);">作业下限</span>
+      <input type="number" id="sbHwLine" class="sandbox-input" style="width:58px;">
+      <span style="font-size:11px;color:var(--color-text-muted);">实验下限</span>
+      <input type="number" id="sbLabLine" class="sandbox-input" style="width:58px;">
+      <button id="btnSandboxRun" class="btn btn-sm btn-primary">试算</button>
+      <button id="btnSandboxCompare" class="btn btn-sm btn-outline">A/B 版本对比</button>
+      <button id="btnSandboxReset" class="btn btn-sm btn-outline">恢复默认阈值</button>
+    </div>
+    <div class="settings-row" id="sandboxNoticeRow">
+      <span style="font-size:11px;color:#b45309;line-height:1.7;">
+        试算结果不会写入任何学生档案，仅供决策参考。切换规则只影响之后的判定，不追溯修改历史预警。
+      </span>
+    </div>
+  </div>
+
+  <!-- ========== 主布局：侧栏 + 内容区 ========== -->
+  <main class="main-content">
+  <!-- 多模态能力栏：OCR / ASR / 拍照答疑 -->
+  <div id="multiModalBar" class="multi-modal-bar" style="display:none;">
+    <div class="multi-modal-toggle" id="multiModalToggle">AI 多模态能力 &#9660;</div>
+    <div class="multi-modal-content" id="multiModalContent">
+      <div class="multi-modal-cards">
+        <div class="mm-card">
+          <span class="mm-icon">&#128247;</span>
+          <span class="mm-label">OCR 图文识别</span>
+          <button type="button" class="btn btn-sm btn-outline" id="btnOcrDemo">拍照 / 上传识别</button>
+          <span class="mm-engine" id="ocrEngineTag">级联：本地 Tesseract → 多模态大模型</span>
+          <div id="ocrProgress" class="mm-track" style="display:none;"><div id="ocrProgressFill" class="mm-fill" style="background:#1a73e8;"></div></div>
+          <div id="ocrResult" class="mm-result"></div>
+        </div>
+        <div class="mm-card">
+          <span class="mm-icon">&#127908;</span>
+          <span class="mm-label">ASR 语音转文字</span>
+          <div class="mm-btn-row">
+            <button type="button" class="btn btn-sm btn-outline" id="btnAsrDemo">实时听写</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btnAsrFile">音频文件</button>
+          </div>
+          <input type="file" id="asrFileInput" accept="audio/*,.wav,.mp3,.m4a,.webm,.ogg,.aac" style="display:none;">
+          <div id="asrProgress" class="mm-track" style="display:none;"><div id="asrProgressFill" class="mm-fill" style="background:#0d904f;"></div></div>
+          <div id="asrResult" class="mm-result"></div>
+        </div>
+        <div class="mm-card">
+          <span class="mm-icon">&#128214;</span>
+          <span class="mm-label">错题拍照答疑</span>
+          <button type="button" class="btn btn-sm btn-outline" id="btnQaDemo">上传错题照片</button>
+          <div id="qaProgress" class="mm-track" style="display:none;"><div id="qaProgressFill" class="mm-fill" style="background:#9334e6;"></div></div>
+          <div id="qaResult" class="mm-result"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+    <!-- ===== 左侧栏：班级-学生列表 ===== -->
+    <aside class="sidebar">
+      <div class="sidebar-search">
+        <input type="text" id="sidebarSearch" class="sidebar-search-input" placeholder="搜索学生姓名或学号..." autocomplete="off">
+        <select id="sidebarStatusFilter" class="sidebar-search-input" style="margin-top:6px;">
+          <option value="">全部工单状态</option>
+          <option value="pending">待干预</option>
+          <option value="processing">处理中</option>
+          <option value="resolved">已办结</option>
+        </select>
+      </div>
+      <div class="sidebar-tree" id="sidebarTree">
+        <!-- JS 动态渲染班级-学生树 -->
+      </div>
+      <!-- 班级预警概览：填住树列表下方的大片留白，同时给出真实的整体态势 -->
+      <div class="sidebar-summary" id="sidebarSummary"></div>
+      <div class="sidebar-footer">
+        <button type="button" id="addStudentBtn" class="btn btn-primary btn-add-student">+ 新增学生</button>
+      </div>
+    </aside>
+
+    <!-- ===== 右侧：主内容区 ===== -->
+    <section class="content-area" id="contentArea">
+
+      <!-- 班级概览看板 -->
+      <div id="contentDashboard" class="dashboard-view">
+        <!-- 统计卡片行 -->
+        <div class="stat-cards" id="statCards"></div>
+        <!-- 图表行 -->
+        <div class="chart-row">
+          <div class="chart-box" id="chartPieBox">
+            <h4 class="chart-title">风险等级分布</h4>
+            <div class="chart-body" id="chartPie"></div>
+            <div class="chart-legend" id="pieLegend"></div>
+          </div>
+          <div class="chart-box" id="chartBarBox">
+            <h4 class="chart-title">核心科目及格率</h4>
+            <div class="chart-body" id="chartBar"></div>
+          </div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-box chart-wide" id="chartLineBox">
+            <h4 class="chart-title">近30天预警趋势</h4>
+            <div class="chart-body" id="chartLine"></div>
+          </div>
+        </div>
+        <!-- 有效干预方式（案例库反哺统计） -->
+        <div class="dashboard-table-wrap" id="interventionWrap" style="margin-bottom:14px;">
+          <h4 class="chart-title">有效干预方式 <span style="font-size:11px;font-weight:400;color:var(--color-text-muted);">（按已结案/已升级案例统计解除率，样本数 &lt; 3 标注"样本不足"）</span></h4>
+          <div id="interventionStats"></div>
+        </div>
+        <!-- 可重点培养名单（正向预警 / 育优） -->
+        <div class="dashboard-table-wrap" id="talentWrap" style="margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <h4 class="chart-title" style="margin:0;">可重点培养名单
+              <span style="font-size:11px;font-weight:400;color:var(--color-text-muted);">（仅供辅导员参考；不对学生展示，也不做学生间排名展示）</span>
+            </h4>
+            <div style="display:flex;gap:6px;">
+              <button type="button" class="btn btn-sm btn-outline" id="btnTalentSort">按优势得分排序 ↓</button>
+              <button type="button" class="btn btn-sm btn-outline" id="btnTalentExport">导出育优名单</button>
+            </div>
+          </div>
+          <div id="talentTable"></div>
+        </div>
+        <!-- 重点关注名单（多源行为画像 · 仅纳入已授权学生） -->
+        <div class="dashboard-table-wrap" id="focusWrap" style="margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <h4 class="chart-title" style="margin:0;">重点关注名单（多源行为画像）
+              <span style="font-size:11px;font-weight:400;color:var(--color-text-muted);">（仅供辅导员参考，不自动决策；仅纳入已单独授权的学生）</span>
+            </h4>
+            <div style="display:flex;gap:6px;">
+              <button type="button" class="btn btn-sm btn-outline" id="btnSeedCampus">载入演示行为数据</button>
+              <button type="button" class="btn btn-sm btn-outline" id="btnGrantAllDemo">演示：批量授权</button>
+              <button type="button" class="btn btn-sm btn-primary" id="btnBuildFocus">生成名单</button>
+            </div>
+          </div>
+          <div id="focusList"></div>
+        </div>
+        <!-- 明细表 -->
+        <div class="dashboard-table-wrap">
+          <h4 class="chart-title">班级学生预警明细</h4>
+          <div class="table-scroll" style="max-height:none;">
+            <table class="mini-table" id="dashboardTable">
+              <thead><tr><th>姓名</th><th>学号</th><th>班级</th><th>风险等级</th><th>风险评分</th><th>工单状态</th><th>操作</th></tr></thead>
+              <tbody id="dashboardTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 错题回流预警（来自学生端错题本聚合） -->
+        <div class="dashboard-table-wrap" id="mmWarningWrap" style="display:none;">
+          <h4 class="chart-title">错题回流预警 <span style="font-size:11px;font-weight:400;color:var(--color-text-muted);">学生端错题本按知识点聚合，未掌握 ≥ 3 题自动上报</span></h4>
+          <div id="mmWarningList"></div>
+        </div>
+      </div>
+      <!-- Tab: 知识库 -->
+      <div class="tab-panel" id="tabKnowledge" style="display:none;">
+        <div class="knowledge-layout">
+          <div class="knowledge-sidebar">
+            <div class="knowledge-sidebar-title">课程分类</div>
+            <div class="knowledge-search-wrap">
+              <input type="text" id="knowledgeSearch" class="knowledge-search-input" placeholder="搜索知识点...">
+            </div>
+            <div id="knowledgeTree"></div>
+          </div>
+          <div class="knowledge-detail" id="knowledgeDetail">
+            <div class="result-placeholder">
+              <div class="placeholder-icon">&#128218;</div>
+              <p class="placeholder-text">请从左侧选择一个知识点<br>或点击预警分析中的关联标签</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: 帮扶方案 -->
+      <div class="tab-panel" id="tabPlan" style="display:none;">
+        <div id="planHeader" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div>
+            <span id="planStatus" class="status-badge status-pending">草稿</span>
+            <span style="font-size:11px;color:var(--color-text-muted);margin-left:8px;" id="planCreatedAt"></span>
+          </div>
+          <div style="display:flex;gap:6px;" id="planActions">
+            <button class="btn btn-sm btn-success" id="btnApprovePlan">通过</button>
+            <button class="btn btn-sm btn-danger" id="btnRejectPlan">驳回</button>
+            <button class="btn btn-sm btn-outline" id="btnEditPlan">编辑</button>
+          </div>
+        </div>
+        <div id="planContent"></div>
+        <!-- 相似历史案例（案例库反哺） -->
+        <div id="similarCasesBlock" style="margin-top:14px;"></div>
+        <div class="history-section" style="margin-top:14px;">
+          <div class="history-header"><h3 class="history-title">方案修改历史</h3></div>
+          <div id="planHistory"></div>
+        </div>
+      </div>
+
+      <!-- Tab: 打卡管理 -->
+      <div class="tab-panel" id="tabCheckin" style="display:none;">
+        <div class="ledger-filters">
+          <select id="ckDateFilter" class="filter-select"><option value="">全部日期</option></select>
+          <select id="ckStatusFilter" class="filter-select">
+            <option value="">全部状态</option><option value="completed">已完成</option><option value="pending">未打卡</option>
+          </select>
+          <select id="ckVerifyFilter" class="filter-select">
+            <option value="">全部核验</option><option value="pending">待核验</option><option value="approved">已通过</option><option value="rejected">已驳回</option>
+          </select>
+          <input type="text" id="ckSearch" class="filter-search" placeholder="搜索学生...">
+          <button class="btn btn-sm btn-success" id="btnBatchApprove">批量通过</button>
+          <button class="btn btn-sm btn-danger" id="btnBatchReject">批量驳回</button>
+        </div>
+        <div class="ledger-table-wrap">
+          <table class="ledger-table">
+            <thead><tr><th><input type="checkbox" id="ckSelectAll"></th><th>学生</th><th>日期</th><th>类型</th><th>完成状态</th><th>核验状态</th><th>操作</th></tr></thead>
+            <tbody id="ckTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab: 知识库管理 -->
+      <div class="tab-panel" id="tabKbAdmin" style="display:none;">
+        <div style="display:flex;gap:12px;margin-bottom:14px;">
+          <button class="btn btn-sm btn-primary" id="btnAddKb">新增知识点</button>
+          <button class="btn btn-sm btn-outline" id="btnSimUpload">模拟上传文件</button>
+        </div>
+        <div id="kbUploadBar" style="display:none;padding:8px 12px;background:#f0fdf4;border-radius:4px;margin-bottom:10px;font-size:12px;">文件上传中...</div>
+        <div class="ledger-filters" style="padding:0 0 10px;">
+          <input type="text" id="kbAdminSearch" class="filter-search" placeholder="搜索知识点..." style="width:200px;">
+        </div>
+        <div class="ledger-table-wrap">
+          <table class="ledger-table">
+            <thead><tr><th>标题</th><th>课程</th><th>难度</th><th>分块状态</th><th>索引状态</th><th>权限</th><th>操作</th></tr></thead>
+            <tbody id="kbAdminBody"></tbody>
+          </table>
+        </div>
+        <!-- 检索测试面板 -->
+        <div class="chart-box" style="margin-top:14px;">
+          <h4 class="chart-title">检索测试</h4>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="kbTestQuery" class="filter-search" placeholder="输入检索关键词..." style="flex:1;">
+            <button class="btn btn-sm btn-primary" id="btnKbTest">检索</button>
+          </div>
+          <div id="kbTestResults" style="margin-top:8px;font-size:12px;"></div>
+        </div>
+      </div>
+
+      <!-- 新增/编辑知识点弹窗 -->
+      <div class="modal-overlay" id="kbEditModal" style="display:none;">
+        <div class="modal-panel" style="max-width:520px;">
+          <div class="modal-header"><h2 class="modal-title" id="kbEditTitle">新增知识点</h2><button class="modal-close" id="kbEditClose">&times;</button></div>
+          <div class="modal-body">
+            <div class="form-group"><label>标题</label><input id="kbEditTitleInput" class="filter-search" style="width:100%;"></div>
+            <div class="form-group" style="margin-top:8px;"><label>课程</label><select id="kbEditCourse" class="filter-select" style="width:100%;"><option>高等数学</option><option>大学英语</option><option>程序设计基础</option><option>计算机导论</option><option>上机实验</option></select></div>
+            <div class="form-group" style="margin-top:8px;"><label>摘要</label><textarea id="kbEditSummary" rows="3" style="width:100%;padding:6px;border:1px solid var(--color-border);border-radius:4px;"></textarea></div>
+            <div class="form-group" style="margin-top:8px;"><label>难度</label><select id="kbEditDiff" class="filter-select"><option>基础</option><option>重点</option><option>难点</option></select></div>
+            <div class="form-group" style="margin-top:8px;"><label>权限</label><select id="kbEditPerm" class="filter-select"><option value="all">学生+教师可见</option><option value="teacher">仅教师可见</option></select></div>
+            <button class="btn btn-primary" style="margin-top:12px;width:100%;" id="btnKbSave">保存</button>
+          </div>
+        </div>
+      </div>
+
+
+
+      <!-- 打卡详情弹窗 -->
+      <div class="modal-overlay" id="ckDetailModal" style="display:none;">
+        <div class="modal-panel" style="max-width:560px;">
+          <div class="modal-header"><h2 class="modal-title">打卡详情</h2><button class="modal-close" id="ckDetailClose">&times;</button></div>
+          <div class="modal-body" id="ckDetailBody"></div>
+        </div>
+      </div>
+
+      <!-- 空状态：未选择学生 -->
+      <div id="contentEmpty" class="result-placeholder" style="display:none;">
+        <div class="placeholder-icon">&#128203;</div>
+        <p class="placeholder-text">请从左侧选择一个学生<br>或点击「新增学生」录入信息</p>
+      </div>
+
+      <!-- Tab: 任务流（必须放在 #contentArea 内，否则会被渲染到视口下方不可见） -->
+      <div class="tab-panel" id="tabFlow" style="display:none;"></div>
+
+      <!-- 学生详情面板 -->
+      <div id="contentDetail" class="content-detail" style="display:none;">
+
+        <!-- Tab 切换 -->
+        <div class="tab-bar">
+          <span class="tab-bar-module" id="tabBarModule">学情预警</span>
+          <button class="tab-item active" data-tab="detail">学生详情</button>
+          <button class="tab-item" data-tab="history">操作记录</button>
+          <button class="tab-item" data-tab="dashboard">班级概览</button>
+          <button class="tab-item" data-tab="knowledge">知识库</button>
+          <button class="tab-item" data-tab="plan">帮扶方案</button>
+          <button class="tab-item" data-tab="checkin">打卡管理</button>
+          <button class="tab-item" data-tab="kbadmin">知识库管理</button>
+          <button class="tab-item" data-tab="tickets">学生申报</button>
+        </div>
+
+        <!-- Tab: 学生详情 -->
+        <div class="tab-panel active" id="tabDetail">
+          <!-- 学生基本信息卡片 -->
+          <div class="student-info-card">
+            <div class="student-info-avatar" id="studentAvatar">张</div>
+            <div class="student-info-meta">
+              <h3 class="student-info-name" id="studentInfoName">张三</h3>
+              <p class="student-info-row"><span>学号：</span><span id="studentInfoId">2024100101</span></p>
+              <p class="student-info-row"><span>班级：</span><span id="studentInfoClass">软件工程2101</span></p>
+              <p class="student-info-row"><span>风险等级：</span><span id="studentInfoRisk" class="risk-badge risk-low">低风险</span></p>
+              <p class="student-info-row"><span>工单状态：</span><span id="studentInfoStatus" class="status-badge status-pending">待干预</span></p>
+            </div>
+            <!-- 风险评分环形进度 -->
+            <div class="student-info-score" id="studentRiskRing" style="display:none;">
+              <svg class="risk-ring" viewBox="0 0 72 72">
+                <circle class="risk-ring-bg" cx="36" cy="36" r="30"/>
+                <circle class="risk-ring-fill" cx="36" cy="36" r="30" id="riskRingFill"/>
+              </svg>
+              <span class="risk-ring-text" id="riskRingText">--</span>
+              <span class="risk-ring-label">安全评分</span>
+            </div>
+            <div class="student-info-actions">
+              <button type="button" id="editStudentBtn" class="btn btn-secondary btn-sm">编辑</button>
+              <button type="button" id="analyzeStudentBtn" class="btn btn-primary btn-sm">提交分析</button>
+              <button type="button" id="exportReportBtn" class="btn btn-secondary btn-sm" style="display:none;">导出预警报告</button>
+            </div>
+          </div>
+
+          <!-- 证据链：该生风险结论的可下钻依据 -->
+          <div class="card" id="evidenceCard" style="padding:12px;margin-bottom:12px;display:none;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+              <div style="font-size:13px;font-weight:600;">证据链 <span id="evidenceCount" class="risk-badge risk-medium" style="font-size:10px;">0 条</span></div>
+              <button type="button" class="btn btn-sm btn-outline" id="btnShowEvidence">查看证据链</button>
+            </div>
+            <div id="evidenceSummary" style="font-size:12px;color:var(--color-text-muted);margin-top:6px;">—</div>
+          </div>
+
+          <!-- 工单信息卡片 -->
+          <div id="ticketCard" class="student-info-card ticket-card" style="display:none;">
+            <div style="flex:1;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h4 style="font-size:14px;font-weight:600;">工单信息</h4>
+                <span id="ticketStatus" class="status-badge status-pending">待干预</span>
+              </div>
+              <p class="student-info-row" style="margin-top:6px;"><span>工单编号：</span><span id="ticketId">--</span></p>
+              <p class="student-info-row"><span>触发时间：</span><span id="ticketTime">--</span></p>
+              <p class="student-info-row"><span>触发原因：</span><span id="ticketReason">--</span></p>
+              <div style="margin-top:8px;display:flex;gap:6px;">
+                <button class="btn btn-sm btn-warning" id="btnUpgrade">升级预警</button>
+                <button class="btn btn-sm btn-outline" id="btnResolve">标记已办结</button>
+              </div>
+            </div>
+          </div>
+          <!-- 学业信息 -->
+          <div class="info-blocks">
+            <div class="info-blocks-hint" id="infoBlocksHint">
+              六维指标来自最近一次分析。点击右上角「提交分析」后生成；已分析过的学生会自动带出上次结果。
+            </div>
+            <div class="info-block">
+              <h4 class="info-block-title">学业成绩</h4>
+              <p class="info-block-text" id="infoGrades">&mdash;</p>
+            </div>
+            <div class="info-block">
+              <h4 class="info-block-title">作业完成</h4>
+              <p class="info-block-text" id="infoHomework">&mdash;</p>
+            </div>
+            <div class="info-block">
+              <h4 class="info-block-title">出勤记录</h4>
+              <p class="info-block-text" id="infoAttendance">&mdash;</p>
+            </div>
+            <div class="info-block">
+              <h4 class="info-block-title">上机实验考勤</h4>
+              <p class="info-block-text" id="infoLab">&mdash;</p>
+            </div>
+            <div class="info-block">
+              <h4 class="info-block-title">代码作业质量</h4>
+              <p class="info-block-text" id="infoCodeQuality">&mdash;</p>
+            </div>
+            <div class="info-block">
+              <h4 class="info-block-title">实验报告完成率</h4>
+              <p class="info-block-text" id="infoLabReport">&mdash;</p>
+            </div>
+          </div>
+
+          <!-- 分析结果区域 -->
+          <div id="resultSection" class="result-section">
+
+            <!-- 加载中 -->
+            <div id="resultLoading" class="result-loading" style="display:none;">
+              <div class="loading-spinner"></div>
+              <p class="loading-text">正在分析中...</p>
+              <div class="stepper">
+                <div class="step" id="step1">
+                  <span class="step-dot"></span>
+                  <span class="step-label">预警分析</span>
+                </div>
+                <div class="step-line"></div>
+                <div class="step" id="step2">
+                  <span class="step-dot"></span>
+                  <span class="step-label">生成帮扶方案</span>
+                </div>
+                <div class="step-line"></div>
+                <div class="step" id="step3">
+                  <span class="step-dot"></span>
+                  <span class="step-label">执行核查</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 结果卡片 -->
+            <div id="resultContent" class="result-content" style="display:none;">
+              <div id="riskCard" class="card">
+                <div class="card-header">
+                  <span class="card-icon">&#9888;</span>
+                  <h3 class="card-title">预警分析</h3>
+                  <span id="riskBadge" class="risk-badge"></span>
+                </div>
+                <div class="card-body" id="riskBody"></div>
+              </div>
+              <div id="supportCard" class="card">
+                <div class="card-header">
+                  <span class="card-icon">&#128218;</span>
+                  <h3 class="card-title">帮扶方案</h3>
+                </div>
+                <div class="card-body" id="supportBody"></div>
+                <div class="card-actions" id="supportActions" style="display:none;">
+                  <button type="button" class="btn btn-sm btn-outline" data-action="assign-mentor">分配导师</button>
+                  <button type="button" class="btn btn-sm btn-primary" data-action="start-support">启动帮扶</button>
+                  <button type="button" class="btn btn-sm btn-outline" data-action="record-progress">记录进展</button>
+                </div>
+              </div>
+              <div id="auditCard" class="card">
+                <div class="card-header">
+                  <span class="card-icon">&#9989;</span>
+                  <h3 class="card-title">核查结论</h3>
+                  <span id="auditBadge" class="audit-badge"></span>
+                </div>
+                <div class="card-body" id="auditBody"></div>
+                <div class="card-actions" id="auditActions" style="display:none;">
+                  <button type="button" class="btn btn-sm btn-outline" data-action="upload-audit">上传核查记录</button>
+                  <button type="button" class="btn btn-sm btn-success" data-action="mark-pass">标记通过</button>
+                  <button type="button" class="btn btn-sm btn-danger" data-action="mark-fail">标记不通过</button>
+                  <button type="button" class="btn btn-sm btn-warning" data-action="trigger-warning">触发二次预警</button>
+                </div>
+              </div>
+              <div class="result-actions">
+                <button type="button" id="exportBtn" class="btn btn-secondary">&#128190; 导出报告</button>
+                <button type="button" id="newAnalysisBtn" class="btn btn-text">新建分析</button>
+              </div>
+            </div>
+
+            <!-- 错误 -->
+            <div id="resultError" class="result-error" style="display:none;">
+              <div class="error-icon">&#9888;</div>
+              <p id="resultErrorText" class="error-text"></p>
+              <button type="button" id="retryBtn" class="btn btn-primary">重试</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: 学生申报（困难申报工单，来自学生端 supportTickets） -->
+        <div class="tab-panel" id="tabTickets" style="display:none;">
+          <div class="ledger-stats" id="ticketStats" style="display:flex;gap:12px;margin-bottom:12px;"></div>
+          <div class="card" style="padding:12px;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px;">学生申报工单 <span style="font-size:11px;font-weight:400;color:var(--color-text-muted);">紧急申报自动置顶</span></div>
+            <div id="ticketList"></div>
+          </div>
+        </div>
+
+        <!-- Tab: 操作记录 -->
+        <div class="tab-panel" id="tabHistory" style="display:none;">
+          <!-- 申诉复核区块（扩展在既有页内，不新开 Tab，保持信息架构稳定） -->
+          <div class="card" style="padding:12px;margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-size:13px;font-weight:600;">申诉复核 <span id="appealPendingBadge" class="risk-badge risk-high" style="font-size:10px;">0 待复核</span></div>
+              <span style="font-size:11px;color:var(--color-text-muted);">学生可对预警判定提出申诉，采纳后风险等级自动降一级</span>
+            </div>
+            <div id="appealReviewList"></div>
+          </div>
+          <!-- 台账筛选栏 -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div><div style="position:relative;display:inline-block;" id="exportDropdownWrap">
+            <button class="btn btn-sm btn-outline" id="btnExportDropdown">导出报表 &#9660;</button>
+            <div id="exportDropdownMenu" style="display:none;position:absolute;top:100%;right:0;background:#fff;border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:50;min-width:200px;padding:4px 0;">
+              <div class="dropdown-item" data-export="students" style="padding:8px 14px;cursor:pointer;font-size:12px;">班级学生信息</div>
+              <div class="dropdown-item" data-export="tickets" style="padding:8px 14px;cursor:pointer;font-size:12px;">预警工单报表</div>
+              <div class="dropdown-item" data-export="checkin" style="padding:8px 14px;cursor:pointer;font-size:12px;">打卡完成率报表</div>
+            </div>
+          </div></div>
+          </div>
+          <div class="ledger-filters">
+            <select id="filterClass" class="filter-select"><option value="">全部班级</option></select>
+            <select id="filterRisk" class="filter-select">
+              <option value="">全部风险</option>
+              <option value="高">高风险</option>
+              <option value="中">中风险</option>
+              <option value="低">低风险</option>
+            </select>
+            <input type="text" id="filterSearch" class="filter-search" placeholder="搜索姓名或学号...">
+            <button type="button" class="btn btn-sm btn-outline" id="exportLedgerBtn">导出 CSV</button>
+          </div>
+          <!-- 台账表格 -->
+          <div class="ledger-table-wrap">
+            <table class="ledger-table">
+              <thead><tr>
+                <th>姓名</th><th>学号</th><th>班级</th><th>风险等级</th><th>风险评分</th><th>工单状态</th><th>分析时间</th><th>操作</th>
+              </tr></thead>
+              <tbody id="ledgerBody"><tr><td colspan="8" class="ledger-empty">暂无预警记录</td></tr></tbody>
+            </table>
+          </div>
+          <!-- 操作日志 -->
+          <div class="history-section" style="margin-top:14px;">
+            <div class="history-header">
+              <h3 class="history-title">&#128196; 操作记录</h3>
+              <button type="button" id="clearHistoryBtn" class="btn btn-text" title="清空历史">清空</button>
+            </div>
+            <div id="operationLogList" class="operation-log-list"><div class="history-empty">暂无操作记录</div></div>
+            <ul id="historyList" class="history-list" style="display:none;"></ul>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- ========== 新增/编辑学生弹窗 ========== -->
+  <div class="modal-overlay" id="studentModal" style="display:none;">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modalTitle">新增学生</h2>
+        <button type="button" class="modal-close" id="modalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- OCR -->
+        <button type="button" id="ocrImageBtn" class="btn btn-ocr" title="拍照识别 / 上传成绩单照片">&#128247; 拍照识别</button>
+        <input type="file" id="ocrFileInput" accept="image/*" style="display:none;">
+        <div id="ocrPreviewBar" class="ocr-bar" style="display:none;">
+          <img id="ocrPreviewImg" class="ocr-bar-img" src="" alt="预览">
+          <div class="ocr-bar-info">
+            <span id="ocrBarStatus" class="ocr-bar-status">识别中...</span>
+            <div class="ocr-bar-track"><div id="ocrBarFill" class="ocr-bar-fill"></div></div>
+          </div>
+        </div>
+        <form id="studentForm" class="input-form">
+          <details class="form-section" open>
+            <summary class="form-section-header">
+              <span class="form-section-icon">&#128100;</span>
+              <span>基本信息</span>
+              <span class="form-section-toggle">&#9660;</span>
+            </summary>
+            <div class="form-section-body">
+              <div class="form-group">
+                <label for="studentName">姓名 <span class="required">*</span></label>
+                <input type="text" id="studentName" placeholder="例如：张三" maxlength="20" autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label for="studentId">学号 <span class="required">*</span></label>
+                <input type="text" id="studentId" placeholder="例如：2024100101" maxlength="20" autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label for="studentClass">班级</label>
+                <input type="text" id="studentClass" placeholder="例如：软件工程2101" maxlength="20" autocomplete="off">
+              </div>
+            </div>
+          </details>
+          <details class="form-section">
+            <summary class="form-section-header">
+              <span class="form-section-icon">&#128218;</span>
+              <span>学业数据</span>
+              <span class="form-section-toggle">&#9660;</span>
+            </summary>
+            <div class="form-section-body">
+              <div class="form-group">
+                <label for="studentGrades">学业成绩</label>
+                <textarea id="studentGrades" rows="2" placeholder="例如：高数 85 分，英语 72 分，编程 90 分&#10;或描述整体成绩趋势"></textarea>
+              </div>
+              <div class="form-group">
+                <label for="studentHomework">作业完成情况</label>
+                <textarea id="studentHomework" rows="2" placeholder="例如：本学期作业按时提交，完成质量中等&#10;或描述是否缺交、迟交"></textarea>
+              </div>
+              <div class="form-group">
+                <label for="studentAttendance">出勤记录</label>
+                <textarea id="studentAttendance" rows="2" placeholder="例如：全勤&#10;或描述迟到、旷课、请假情况"></textarea>
+              </div>
+              <div class="form-group">
+                <label for="studentLab">上机实验考勤</label>
+                <textarea id="studentLab" rows="2" placeholder="例如：上机实验全勤，无迟到早退&#10;或描述缺勤、迟到情况"></textarea>
+              </div>
+              <div class="form-group">
+                <label for="studentCodeQuality">代码作业质量</label>
+                <textarea id="studentCodeQuality" rows="2" placeholder="例如：代码规范良好，逻辑清晰，偶有语法错误&#10;或描述代码规范、完成度、Bug情况"></textarea>
+              </div>
+              <div class="form-group">
+                <label for="studentLabReport">实验报告完成率</label>
+                <textarea id="studentLabReport" rows="2" placeholder="例如：实验报告按时提交，完成率90%&#10;或描述提交率、质量评级"></textarea>
+              </div>
+            </div>
+          </details>
+          <div class="form-actions">
+            <button type="submit" id="submitBtn" class="btn btn-primary">
+              <span id="submitBtnText">&#128269; 提交分析</span>
+            </button>
+            <button type="button" id="clearBtn" class="btn btn-secondary">清空</button>
+          </div>
+          <div id="formError" class="form-error" style="display:none;"></div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 批量导入弹窗 ========== -->
+  <div class="modal-overlay" id="importModal" style="display:none;">
+    <div class="modal-panel modal-wide">
+      <div class="modal-header">
+        <h2 class="modal-title">批量导入学生数据</h2>
+        <button type="button" class="modal-close" id="importModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="importStep1">
+          <p class="import-hint">选择 CSV 或 Excel(.xlsx) 文件，模板列：姓名、学号、班级、高数、英语、编程、计算机基础、出勤率(%)、作业提交率(%)、上机实验完成率(%)</p>
+          <div class="import-upload-zone" id="importDropZone">
+            <span class="import-upload-icon">📂</span>
+            <p>拖放 CSV 文件到此处，或点击选择</p>
+            <input type="file" id="importFileInput" accept=".csv,.txt,.xlsx,.xls" style="display:none;">
+          </div>
+          <div class="import-preview-wrap" id="importPreviewWrap" style="display:none;">
+            <div class="import-stats" id="importStats"></div>
+            <div class="table-scroll"><table class="mini-table" id="importPreviewTable"><thead></thead><tbody></tbody></table></div>
+          </div>
+        </div>
+        <div class="form-actions" style="margin-top:14px;justify-content:flex-end;">
+          <button type="button" class="btn btn-secondary" id="importCancelBtn">取消</button>
+          <button type="button" class="btn btn-primary" id="importConfirmBtn" disabled>确认导入并批量分析</button>
+        </div>
+        <div id="importResult" class="import-result" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全局拖放遮罩 -->
+  <div id="dropOverlay" class="drop-overlay" style="display:none;">
+    <div class="drop-overlay-content">
+      <span class="drop-overlay-icon">&#128247;</span>
+      <p>释放图片以进行识别</p>
+    </div>
+  </div>
+
+  <!-- ========== Toast 消息 ========== -->
+  <div id="toast" class="toast" style="display:none;"></div>
+
+  <!-- 演示进度条 -->
+  <div id="demoBar" style="display:none;position:fixed;top:0;left:0;right:0;height:3px;background:#e8eaed;z-index:9999;">
+    <div id="demoBarFill" style="height:100%;width:0%;background:linear-gradient(90deg,#1a73e8,#0d904f);transition:width 0.5s;"></div>
+  </div>
+
+  <!-- ========== 脚本 ========== -->
+  <script src="riskPlugins/pluginManager.js"></script>
+  <script src="riskPlugins/textMetrics.js"></script>
+  <script src="riskPlugins/rules/basic.js"></script>
+  <script src="riskPlugins/rules/weighted.js"></script>
+  <script src="riskPlugins/rules/strict.js"></script>
+  <script src="echarts.min.js"></script>
+  <script src="xlsx.full.min.js"></script>
+  <script src="knowledge.js"></script>
+  <script src="config.local.js"></script>
+  <script src="config.js"></script>
+  <script src="students.js"></script>
+  <script src="onboarding.js"></script>
+  <script src="multimodal.js"></script>
+  <script src="tickets.js"></script>
+  <script src="appeals.js"></script>
+  <script src="evidence.js"></script>
+  <script src="cases.js"></script>
+  <script src="riskPlugins/positiveRule.js"></script>
+  <script src="signals.js"></script>
+  <script src="profileFusion.js"></script>
+  <script src="campusProfile.js"></script>
+  <script src="demoSeed.js"></script>
+  <script src="flowEngine.js"></script>
+  <!-- 三 Agent 契约层与数据桥：必须在 flows.js 之前加载（flows.js 的 agent 节点依赖 Agents） -->
+  <script src="agents.js"></script>
+  <script src="agentBridge.js"></script>
+  <script src="flows.js"></script>
+  <script src="app.js"></script>
+
+<!-- Agent配置弹窗 -->
+  <div class="modal-overlay" id="agentModal" style="display:none;">
+    <div class="modal-panel" style="max-width:620px;">
+      <div class="modal-header"><h2 class="modal-title">AI Agent 配置</h2><button class="modal-close" id="agentModalClose">&times;</button></div>
+      <div class="modal-body">
+        <div class="tab-bar" style="padding:0;margin-bottom:12px;">
+          <button class="tab-item active" data-agent="warning">预警分析师</button>
+          <button class="tab-item" data-agent="support">帮扶规划师</button>
+          <button class="tab-item" data-agent="audit">执行监督员</button>
+        </div>
+        <div id="agentDescription" style="font-size:12px;color:var(--color-text-muted);margin-bottom:10px;"></div>
+        <div class="form-group"><label>系统提示词</label>
+          <textarea id="agentPrompt" rows="6" style="width:100%;padding:8px;border:1px solid var(--color-border);border-radius:4px;font-family:monospace;font-size:12px;"></textarea>
+        </div>
+        <div class="form-group" style="margin-top:10px;"><label>温度 (Temperature): <span id="tempVal">0.3</span></label>
+          <input type="range" id="agentTemp" min="0" max="1" step="0.1" value="0.3" style="width:100%;">
+        </div>
+        <div class="form-group" style="margin-top:8px;"><label>最大Token: <span id="tokenVal">2048</span></label>
+          <input type="range" id="agentTokens" min="256" max="8192" step="256" value="2048" style="width:100%;">
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <button class="btn btn-sm btn-outline" id="btnResetPrompt">恢复默认</button>
+          <button class="btn btn-sm btn-primary" id="btnTestAgent">测试配置</button>
+        </div>
+        <div id="agentTestResult" style="margin-top:10px;padding:10px;background:#f8f9fb;border-radius:4px;font-size:12px;display:none;"></div>
+      </div>
+    </div>
+  </div>
+<!-- 演示按钮 -->
+  
+  </div>
+</body>
+</html>

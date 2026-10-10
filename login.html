@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN" style="height:100%;">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self';">
+  <title>学业预警帮扶平台 - 身份选择</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="session.js"></script>
+  <script src="permissions.js"></script>
+  <script src="students.js"></script>
+</head>
+<body class="login-body">
+
+<div class="login-wrap">
+  <div class="login-brand">
+    <span class="login-logo">&#9888;</span>
+    <h1 class="login-title">学业预警帮扶平台</h1>
+    <p class="login-sub">请选择你的身份进入系统</p>
+  </div>
+
+  <div class="login-notice" id="loginNotice" style="display:none;"></div>
+
+  <div class="login-session" id="loginSession" style="display:none;">
+    <span id="loginSessionText"></span>
+    <button type="button" class="btn btn-sm btn-primary" id="loginResume">继续进入</button>
+    <button type="button" class="btn btn-sm btn-outline" id="loginRechoose">重新选择身份</button>
+  </div>
+
+  <div class="login-roles" id="loginRoles">
+    <button type="button" class="login-role" data-role="teacher">
+      <span class="login-role-icon">&#128104;&#8205;&#127979;</span>
+      <span class="login-role-name">我是教师</span>
+      <span class="login-role-desc">辅导员 / 班主任 / 任课教师<br>做预警分析、帮扶跟踪、知识库与任务流</span>
+    </button>
+    <button type="button" class="login-role" data-role="student">
+      <span class="login-role-icon">&#127891;</span>
+      <span class="login-role-name">我是学生</span>
+      <span class="login-role-desc">查看学业画像、学习计划、错题本<br>拍照答疑与困难申报</span>
+    </button>
+  </div>
+
+  <!-- 教师身份 -->
+  <form class="login-form card" id="teacherForm" style="display:none;">
+    <h2 class="login-form-title">教师身份</h2>
+    <div class="form-group">
+      <label for="teacherName">姓名</label>
+      <input id="teacherName" type="text" placeholder="请输入姓名（可留空，默认「辅导员」）" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="teacherTitle">职务</label>
+      <select id="teacherTitle">
+        <option value="辅导员">辅导员</option>
+        <option value="班主任">班主任</option>
+        <option value="任课教师">任课教师</option>
+        <option value="学院管理员">学院管理员</option>
+      </select>
+    </div>
+    <div class="login-hint">演示模式：本地选择身份，不做密码校验。接入学校统一身份认证后，此处将替换为真实登录。</div>
+    <div class="login-actions">
+      <button type="button" class="btn btn-secondary" data-back="1">返回</button>
+      <button type="submit" class="btn btn-primary">进入教师端</button>
+    </div>
+  </form>
+
+  <!-- 学生身份 -->
+  <form class="login-form card" id="studentForm" style="display:none;">
+    <h2 class="login-form-title">学生身份</h2>
+    <div class="form-group">
+      <label for="studentId">学号</label>
+      <input id="studentId" type="text" list="rosterList" placeholder="请输入学号，例如 2024100103" autocomplete="off">
+      <datalist id="rosterList"></datalist>
+      <div class="login-hint" id="studentMatched"></div>
+    </div>
+    <div class="form-group">
+      <label for="studentName">姓名</label>
+      <input id="studentName" type="text" placeholder="请输入姓名用于校验" autocomplete="off">
+    </div>
+    <div class="login-hint" id="rosterHint"></div>
+    <div class="login-actions">
+      <button type="button" class="btn btn-secondary" data-back="1">返回</button>
+      <button type="submit" class="btn btn-primary">进入学生端</button>
+    </div>
+  </form>
+
+  <div class="login-foot">
+    <span>版本 1.2.0</span>
+    <span class="login-foot-sep">·</span>
+    <span id="loginProvider">演示模式</span>
+  </div>
+</div>
+
+<script src="login.js"></script>
+</body>
+</html>
